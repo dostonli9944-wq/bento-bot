@@ -1,8 +1,8 @@
 {
-  "1": {"name": "Тушёнка", "price": 45000, "desc": "Картошка билан. Сетга бепул: нон, салат, кофе, ёнғоқ", "photo_url": "/static/p1.jpg"},
-  "2": {"name": "Бифштекс", "price": 40000, "desc": "Макарон ва тухум билан. Сетга бепул: нон, салат, кофе, ёнғоқ", "photo_url": "/static/p2.jpg"},
-  "3": {"name": "Куриная котлета", "price": 40000, "desc": "Гуруч билан. Сетга бепул: нон, салат, кофе, ёнғоқ", "photo_url": "/static/p3.jpg"},
-  "4": {"name": "Манти", "price": 40000, "desc": "Сетга бепул: нон, салат, кофе, ёнғоқ", "photo_url": "/static/p4.jpg"},
-  "5": {"name": "Мясо по-китайски", "price": 40000, "desc": "Гуруч билан. Сетга бепул: нон, салат, кофе, ёнғоқ", "photo_url": "/static/p5.jpg"},
-  "6": {"name": "Чойхона палов", "price": 40000, "desc": "Сетга бепул: нон, салат, кофе, ёнғоқ", "photo_url": "/static/p6.jpg"}
+  "1": {"name": "Тушёнка", "price": 45000, "desc": "", "photo_url": "/static/p1.jpg"},
+  "2": {"name": "Бифштекс", "price": 40000, "desc": "", "photo_url": "/static/p2.jpg"},
+  "3": {"name": "Куриная котлета", "price": 40000, "desc": "", "photo_url": "/static/p3.jpg"},
+  "4": {"name": "Манти", "price": 40000, "desc": "", "photo_url": "/static/p4.jpg"},
+  "5": {"name": "Мясо по-китайски", "price": 40000, "desc": "", "photo_url": "/static/p5.jpg"},
+  "6": {"name": "Чойхона палов", "price": 40000, "desc": "", "photo_url": "/static/p6.jpg"}
 }
