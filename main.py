@@ -424,7 +424,11 @@ async def api_order(req):
         f"📍 {html.escape(address)}"
         + (f"\n💬 {html.escape(comment)}" if comment else "")
     )
-    msg = await bot.send_message(GROUP_ID, text, reply_markup=order_kb(uid, no))
+    try:
+        msg = await bot.send_message(GROUP_ID, text, reply_markup=order_kb(uid, no))
+    except Exception as e:  # noqa: BLE001
+        log.error("Buyurtma guruhga yuborilmadi: %s", e)
+        return json_err("Ҳозир буюртмани қабул қилиб бўлмади. Илтимос, бироздан кейин қайта уриниб кўринг.", 503)
 
     loc = body.get("location") or {}
     try:
