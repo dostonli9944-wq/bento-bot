@@ -126,3 +126,17 @@ def summary(today: date) -> dict:
         "today": _period(t, t), "yesterday": _period(y, y), "week": _period(w, t), "month": _period(m, t),
         "by_status": by_status, "top": top.most_common(6), "daily": daily,
     }
+
+
+def count_orders() -> int:
+    return conn().execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+
+
+def wipe_orders() -> int:
+    """Barcha buyurtmalarni o'chiradi (test ma'lumotlarini tozalash). Qaytarib bo'lmaydi."""
+    c = conn()
+    n = count_orders()
+    c.execute("DELETE FROM orders")
+    c.execute("DELETE FROM sqlite_sequence WHERE name='orders'")
+    c.commit()
+    return n

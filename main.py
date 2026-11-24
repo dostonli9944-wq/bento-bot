@@ -230,7 +230,9 @@ ADMIN_HELP = (
     "Шу рақамдаги таом аввал бор бўлса — алмаштирилади.\n\n"
     "/menyu — ҳозирги меню\n"
     "/ochir 3 — 3-таомни ўчириш\n"
-    "/tozala — бутун менюни тозалаш"
+    "/tozala — бутун менюни тозалаш\n"
+    "/panel — админ панелга кириш\n"
+    "/hisob_nol — панелдаги буюртма ва статистикани 0 қилиш"
 )
 
 
@@ -406,6 +408,37 @@ async def on_status(cq: CallbackQuery):
     _, status, oid = parts
     o = await apply_status(int(oid), status, cq.from_user.full_name)
     await cq.answer(db.STATUSES.get(status, "") if o else "Буюртма топилмади")
+
+
+# ---------------- Bot: statistikani nolga tushirish (faqat ADMIN_IDS) ----------------
+@dp.message(Command("hisob_nol"), F.chat.type == "private")
+async def on_wipe(m: Message):
+    if not m.from_user or m.from_user.id not in ADMIN_IDS:
+        return
+    n = db.count_orders()
+    if not n:
+        return await m.answer("Bazada buyurtma yo'q — hisoblar allaqachon 0.")
+    await m.answer(
+        f"⚠️ Panel'dagi <b>{n} ta</b> buyurtma va butun statistika o'chiriladi, raqamlash №1 dan boshlanadi.\n"
+        "Buni <b>qaytarib bo'lmaydi</b>. Davom etamizmi?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🗑 Ha, o'chirish", callback_data="wipe:yes"),
+            InlineKeyboardButton(text="Bekor qilish", callback_data="wipe:no"),
+        ]]),
+    )
+
+
+@dp.callback_query(F.data.startswith("wipe:"))
+async def on_wipe_cb(cq: CallbackQuery):
+    if cq.from_user.id not in ADMIN_IDS:
+        return await cq.answer("Ruxsat yo'q", show_alert=True)
+    if cq.data == "wipe:yes":
+        n = db.wipe_orders()
+        log.info("Buyurtmalar bazasi tozalandi: %s ta (%s)", n, cq.from_user.id)
+        await cq.message.edit_text(f"✅ {n} ta buyurtma o'chirildi. Panel'dagi hisoblar endi 0.")
+    else:
+        await cq.message.edit_text("Bekor qilindi, hech narsa o'chirilmadi.")
+    await cq.answer()
 
 
 # ---------------- Bot: admin panelga kirish ----------------
