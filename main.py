@@ -158,9 +158,11 @@ async def load_menu():
             return
     except Exception as e:  # noqa: BLE001
         log.warning("Guruhdan menyuni o'qib bo'lmadi: %s", e)
-    if MENU_FILE.exists():
-        menu = json.loads(MENU_FILE.read_text("utf-8"))
-        log.info("Menyu fayldan yuklandi: %d ta taom", len(menu))
+    for f in (MENU_FILE, ROOT / "menu_default.json"):
+        if f.exists():
+            menu = json.loads(f.read_text("utf-8"))
+            log.info("Menyu %s fayldan yuklandi: %d ta taom", f.name, len(menu))
+            return
 
 
 async def save_menu():
@@ -234,7 +236,7 @@ async def on_menu(m: Message):
     if not menu:
         await m.answer("Меню бўш.\n\n" + ADMIN_HELP)
         return
-    lines = [f"{s}. <b>{html.escape(d['name'])}</b> — {som(d['price'])}{' 📷' if d.get('photo') else ''}"
+    lines = [f"{s}. <b>{html.escape(d['name'])}</b> — {som(d['price'])}{' 📷' if d.get('photo') or d.get('photo_url') else ''}"
              for s, d in sorted_menu()]
     await m.answer("📋 <b>Ҳозирги меню</b>\n\n" + "\n".join(lines))
 
@@ -277,8 +279,9 @@ async def on_dish_text(m: Message):
         await m.answer("Формат нотўғри.\n\n" + ADMIN_HELP)
         return
     slot, dish = parsed
-    if slot in menu and menu[slot].get("photo"):
-        dish["photo"] = menu[slot]["photo"]   # eski rasm qoladi
+    for key in ("photo", "photo_url"):        # eski rasm qoladi
+        if slot in menu and menu[slot].get(key):
+            dish[key] = menu[slot][key]
     menu[slot] = dish
     await save_menu()
     await m.answer(f"✅ {slot}. {html.escape(dish['name'])} — {som(dish['price'])} сақланди.")
@@ -339,6 +342,8 @@ async def api_menu(_req):
         photo = None
         if d.get("photo"):
             photo = f"/photo/{slot}?v={hashlib.md5(d['photo'].encode()).hexdigest()[:8]}"
+        elif d.get("photo_url"):
+            photo = d["photo_url"]
         dishes.append({"slot": slot, "name": d["name"], "price": d["price"], "desc": d.get("desc", ""), "photo": photo})
     return web.json_response(
         {"dishes": dishes, "open": is_open(), "start": ORDER_START, "end": ORDER_END,
@@ -448,6 +453,8 @@ def build_app() -> web.Application:
     app.router.add_post("/api/order", api_order)
     app.router.add_get("/photo/{slot}", photo)
     app.router.add_get("/health", health)
+    if (ROOT / "static").is_dir():
+        app.router.add_static("/static", ROOT / "static")
     if not USE_POLLING:
         SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET).register(app, path=WEBHOOK_PATH)
     return app
