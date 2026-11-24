@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="uz-Cyrl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Bento — бугунги меню</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --red:#D32F2F;
+  --bg:var(--tg-theme-bg-color,#ffffff);
+  --text:var(--tg-theme-text-color,#1b1b1b);
+  --hint:var(--tg-theme-hint-color,#8a8a8a);
+  --card:var(--tg-theme-secondary-bg-color,#f4f4f5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:96px;-webkit-tap-highlight-color:transparent}
+header{background:var(--red);color:#fff;padding:18px 16px 16px;display:flex;align-items:center;gap:12px}
+.logo{width:44px;height:44px;border-radius:12px;background:#fff;color:var(--red);display:flex;align-items:center;justify-content:center;font-size:24px}
+header h1{font-size:24px;font-weight:800;letter-spacing:.3px;line-height:1.1}
+header p{opacity:.9;font-size:13px;margin-top:2px}
+.notice{margin:12px 16px 0;padding:10px 12px;border-radius:12px;background:var(--card);font-size:13px;color:var(--hint);line-height:1.4}
+.notice.closed{background:#FDECEA;color:#B71C1C;font-weight:600}
+.list{padding:12px 16px;display:grid;gap:12px}
+.dish{display:flex;gap:12px;background:var(--card);border-radius:16px;padding:10px;align-items:center}
+.dish img,.ph{width:92px;height:92px;border-radius:12px;object-fit:cover;flex-shrink:0;background:#e6e6e6}
+.ph{display:flex;align-items:center;justify-content:center;font-size:38px}
+.info{flex:1;min-width:0}
+.info h3{font-size:16px;font-weight:700;line-height:1.25}
+.desc{font-size:13px;color:var(--hint);margin:3px 0 8px;line-height:1.35}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.price{font-weight:700;font-size:15px;white-space:nowrap}
+.add{background:var(--red);color:#fff;border:0;border-radius:10px;padding:8px 14px;font-size:14px;font-weight:600}
+.add:disabled{opacity:.4}
+.qty{display:flex;align-items:center;gap:10px}
+.qty button{width:32px;height:32px;border-radius:10px;border:0;background:var(--red);color:#fff;font-size:18px;font-weight:700;line-height:1}
+.qty span{min-width:18px;text-align:center;font-weight:700}
+.empty{text-align:center;color:var(--hint);padding:48px 24px;line-height:1.5}
+.summary{margin:4px 16px 0;padding:12px 14px;border-radius:14px;background:var(--card);font-size:14px;display:grid;gap:6px}
+.summary .line{display:flex;justify-content:space-between;gap:8px}
+.summary .total{font-weight:800;font-size:16px}
+.tip{color:var(--red);font-weight:600;font-size:13px}
+h2{font-size:18px;padding:16px 16px 4px}
+form{padding:8px 16px;display:grid;gap:12px}
+label{font-size:13px;color:var(--hint);display:grid;gap:5px}
+input,textarea{font:inherit;font-size:16px;color:var(--text);background:var(--card);border:1.5px solid transparent;border-radius:12px;padding:12px;width:100%}
+textarea{resize:none;min-height:70px}
+input:focus,textarea:focus{outline:none;border-color:var(--red)}
+.bad{border-color:#E53935!important}
+.locbtn{background:transparent;border:1.5px dashed var(--red);color:var(--red);border-radius:12px;padding:11px;font:inherit;font-weight:600;font-size:15px}
+.locbtn.ok{border-style:solid;background:#E8F5E9;color:#2E7D32;border-color:#2E7D32}
+.fallback{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--bg);box-shadow:0 -4px 16px rgba(0,0,0,.06)}
+.fallback button{width:100%;padding:15px;border:0;border-radius:14px;background:var(--red);color:#fff;font-size:16px;font-weight:700}
+.done{text-align:center;padding:72px 24px;line-height:1.5}
+.done .big{font-size:64px}
+.done h2{padding:12px 0 6px;font-size:22px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📍</div>
+  <div>
+    <h1>Bento</h1>
+    <p>тушлик · тез · иссиқ</p>
+  </div>
+</header>
+
+<div id="notice" class="notice">Юкланмоқда…</div>
+
+<!-- 1. Menyu -->
+<section id="menuScreen">
+  <div id="list" class="list"></div>
+  <div id="menuSummary" class="summary hidden"></div>
+</section>
+
+<!-- 2. Rasmiylashtirish -->
+<section id="checkoutScreen" class="hidden">
+  <h2>Буюртмани расмийлаштириш</h2>
+  <div id="checkoutSummary" class="summary"></div>
+  <form id="form" onsubmit="return false">
+    <label>Исмингиз
+      <input id="name" autocomplete="name" placeholder="Масалан: Азиз">
+    </label>
+    <label>Телефон рақамингиз
+      <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+998 90 123 45 67">
+    </label>
+    <label>Манзил (Тошкент шаҳри ичида)
+      <textarea id="address" placeholder="Туман, кўча, уй, офис / қават"></textarea>
+    </label>
+    <button type="button" id="locBtn" class="locbtn">📍 Жойлашувни юбориш (ихтиёрий)</button>
+    <label>Изоҳ (ихтиёрий)
+      <textarea id="comment" placeholder="Мўлжал, вақт ёки бошқа истаклар"></textarea>
+    </label>
+  </form>
+</section>
+
+<!-- 3. Tayyor -->
+<section id="doneScreen" class="hidden">
+  <div class="done">
+    <div class="big">✅</div>
+    <h2>Раҳмат!</h2>
+    <p id="doneText">Буюртмангиз қабул қилинди. Тез орада оператор боғланади.</p>
+  </div>
+</section>
+
+<div id="fallback" class="fallback hidden"><button id="fallbackBtn"></button></div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+const inTG = !!(tg && tg.initData);
+const RED = '#D32F2F';
+let M = null;                 // /api/menu javobi
+const cart = {};              // {slot: qty}
+let screen = 'menu';
+let geo = null;
+let sending = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const som = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' сўм';
+const ver = v => !!(tg && tg.isVersionAtLeast && tg.isVersionAtLeast(v));
+
+if (tg) {
+  tg.ready();
+  tg.expand();
+  try { if (ver('6.1')) { tg.setHeaderColor(RED); tg.setBackgroundColor(tg.themeParams.bg_color || '#ffffff'); } } catch (e) {}
+}
+
+// ---------- hisob ----------
+function totals() {
+  let qty = 0, sub = 0;
+  for (const d of (M ? M.dishes : [])) {
+    const q = cart[d.slot] || 0;
+    qty += q; sub += q * d.price;
+  }
+  const fee = qty === 0 ? 0 : (qty >= M.freeFrom ? 0 : M.fee);
+  return { qty, sub, fee, total: sub + fee };
+}
+
+function summaryHTML() {
+  const t = totals();
+  let h = '';
+  if (screen === 'checkout') {
+    for (const d of M.dishes) if (cart[d.slot])
+      h += `<div class="line"><span>${esc(d.name)} × ${cart[d.slot]}</span><span>${som(cart[d.slot] * d.price)}</span></div>`;
+  }
+  h += `<div class="line"><span>Таомлар (${t.qty} та)</span><span>${som(t.sub)}</span></div>`;
+  h += `<div class="line"><span>Етказиш</span><span>${t.fee === 0 ? 'бепул 🎉' : som(t.fee)}</span></div>`;
+  h += `<div class="line total"><span>Жами</span><span>${som(t.total)}</span></div>`;
+  if (t.fee > 0) {
+    const left = M.freeFrom - t.qty;
+    h += `<div class="tip">Яна ${left} та порция қўшсангиз — етказиш бепул!</div>`;
+  }
+  return h;
+}
+
+// ---------- menyu ----------
+function renderMenu() {
+  const list = $('list');
+  if (!M.dishes.length) {
+    list.innerHTML = `<div class="empty">🍱<br>Бугунги меню ҳали қўшилмаган.<br>Бироздан сўнг қайта киринг.</div>`;
+  } else {
+    list.innerHTML = M.dishes.map(d => {
+      const q = cart[d.slot] || 0;
+      const img = d.photo ? `<img src="${d.photo}" alt="" loading="lazy">` : `<div class="ph">🍲</div>`;
+      const ctrl = q
+        ? `<div class="qty"><button data-act="minus" data-slot="${d.slot}">−</button><span>${q}</span><button data-act="plus" data-slot="${d.slot}">+</button></div>`
+        : `<button class="add" data-act="plus" data-slot="${d.slot}" ${M.open ? '' : 'disabled'}>Қўшиш</button>`;
+      return `<div class="dish">${img}<div class="info"><h3>${esc(d.name)}</h3>${d.desc ? `<div class="desc">${esc(d.desc)}</div>` : ''}<div class="row"><span class="price">${som(d.price)}</span>${ctrl}</div></div></div>`;
+    }).join('');
+  }
+  const t = totals();
+  $('menuSummary').classList.toggle('hidden', t.qty === 0);
+  $('menuSummary').innerHTML = t.qty ? summaryHTML() : '';
+  updateButtons();
+}
+
+$('list').addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b || !M.open) return;
+  const s = b.dataset.slot;
+  cart[s] = Math.max(0, Math.min(50, (cart[s] || 0) + (b.dataset.act === 'plus' ? 1 : -1)));
+  if (!cart[s]) delete cart[s];
+  try { tg && tg.HapticFeedback && tg.HapticFeedback.selectionChanged(); } catch (e) {}
+  renderMenu();
+});
+
+// ---------- tugmalar ----------
+function setMain(text, visible) {
+  if (inTG) {
+    tg.MainButton.setParams({ text, color: RED, text_color: '#ffffff', is_visible: visible, is_active: true });
+  } else {
+    $('fallbackBtn').textContent = text;
+    $('fallback').classList.toggle('hidden', !visible);
+  }
+}
+
+function updateButtons() {
+  const t = totals();
+  if (screen === 'menu') {
+    setMain(`Расмийлаштириш · ${som(t.total)}`, M.open && t.qty > 0);
+    if (inTG && ver('6.1')) tg.BackButton.hide();
+  } else if (screen === 'checkout') {
+    setMain(`Буюртма бериш · ${som(t.total)}`, true);
+    if (inTG && ver('6.1')) tg.BackButton.show();
+  } else {
+    setMain('', false);
+    if (inTG && ver('6.1')) tg.BackButton.hide();
+  }
+}
+
+function show(name) {
+  screen = name;
+  $('menuScreen').classList.toggle('hidden', name !== 'menu');
+  $('checkoutScreen').classList.toggle('hidden', name !== 'checkout');
+  $('doneScreen').classList.toggle('hidden', name !== 'done');
+  $('notice').classList.toggle('hidden', name === 'done');
+  if (name === 'checkout') $('checkoutSummary').innerHTML = summaryHTML();
+  if (name === 'menu') renderMenu(); else updateButtons();
+  window.scrollTo(0, 0);
+}
+
+function onMain() {
+  if (screen === 'menu') show('checkout');
+  else if (screen === 'checkout') submit();
+}
+if (inTG) {
+  tg.MainButton.onClick(onMain);
+  if (ver('6.1')) tg.BackButton.onClick(() => show('menu'));
+} else {
+  $('fallbackBtn').addEventListener('click', onMain);
+}
+
+// ---------- mijoz ma'lumotlarini eslab qolish ----------
+const FIELDS = ['name', 'phone', 'address'];
+function loadProfile() {
+  const fill = obj => FIELDS.forEach(k => { if (obj[k] && !$(k).value) $(k).value = obj[k]; });
+  if (inTG && ver('6.9')) {
+    tg.CloudStorage.getItems(FIELDS, (err, vals) => { if (!err && vals) fill(vals); });
+  } else {
+    try { fill(JSON.parse(localStorage.getItem('bento_profile') || '{}')); } catch (e) {}
+  }
+  const u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+  if (u && !$('name').value) $('name').value = u.first_name || '';
+  if (!$('phone').value) $('phone').value = '+998 ';
+}
+function saveProfile() {
+  const vals = {}; FIELDS.forEach(k => vals[k] = $(k).value.trim());
+  if (inTG && ver('6.9')) FIELDS.forEach(k => tg.CloudStorage.setItem(k, vals[k]));
+  else { try { localStorage.setItem('bento_profile', JSON.stringify(vals)); } catch (e) {} }
+}
+
+// ---------- lokatsiya ----------
+$('locBtn').addEventListener('click', () => {
+  const ok = (lat, lon) => {
+    geo = { lat, lon };
+    $('locBtn').textContent = '✅ Жойлашув қўшилди';
+    $('locBtn').classList.add('ok');
+  };
+  const fail = () => alertMsg('Жойлашувни олиб бўлмади. Манзилни ёзиб қолдиринг.');
+  if (inTG && ver('8.0') && tg.LocationManager) {
+    tg.LocationManager.init(() => {
+      if (!tg.LocationManager.isLocationAvailable) return fail();
+      tg.LocationManager.getLocation(d => d ? ok(d.latitude, d.longitude) : fail());
+    });
+  } else if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(p => ok(p.coords.latitude, p.coords.longitude), fail, { timeout: 10000 });
+  } else fail();
+});
+
+function alertMsg(m) { if (inTG && ver('6.2')) tg.showAlert(m); else alert(m); }
+
+// ---------- yuborish ----------
+async function submit() {
+  if (sending) return;
+  const name = $('name').value.trim();
+  const phone = $('phone').value.trim();
+  const address = $('address').value.trim();
+  const digits = phone.replace(/\D/g, '');
+  $('name').classList.toggle('bad', !name);
+  $('phone').classList.toggle('bad', digits.length < 12 && digits.length !== 9);
+  $('address').classList.toggle('bad', !address);
+  if (!name || !address || (digits.length < 12 && digits.length !== 9)) {
+    try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('error'); } catch (e) {}
+    return alertMsg('Исм, телефон рақам ва манзилни тўлиқ киритинг.');
+  }
+  sending = true;
+  if (inTG) tg.MainButton.showProgress();
+  try {
+    const r = await fetch('/api/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        initData: tg ? tg.initData : '',
+        items: Object.entries(cart).map(([slot, qty]) => ({ slot, qty })),
+        name, phone, address, comment: $('comment').value.trim(), location: geo,
+      }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Хатолик');
+    saveProfile();
+    $('doneText').textContent = `Буюртма №${j.no} қабул қилинди. Жами: ${som(j.total)}. Тез орада оператор боғланади.`;
+    try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
+    show('done');
+    if (inTG) setTimeout(() => tg.close(), 3500);
+  } catch (e) {
+    alertMsg(e.message || 'Интернет билан муаммо. Қайта уриниб кўринг.');
+  } finally {
+    sending = false;
+    if (inTG) tg.MainButton.hideProgress();
+  }
+}
+
+// ---------- start ----------
+async function init() {
+  try {
+    const r = await fetch('/api/menu', { cache: 'no-store' });
+    M = await r.json();
+  } catch (e) {
+    $('notice').textContent = 'Менюни юклаб бўлмади. Интернетни текширинг.';
+    return;
+  }
+  const n = $('notice');
+  if (M.open) {
+    n.innerHTML = `Буюртмалар <b>${M.start}–${M.end}</b> оралиғида қабул қилинади. ${M.freeFrom} та ва ундан кўп порцияга етказиш <b>бепул</b>, камига — ${som(M.fee)}.`;
+  } else {
+    n.className = 'notice closed';
+    n.textContent = `Ҳозир буюртма қабул қилинмайди. Буюртмалар ҳар куни ${M.start}–${M.end} оралиғида. Кутиб қоламиз!`;
+  }
+  loadProfile();
+  renderMenu();
+}
+init();
+</script>
+</body>
+</html>
