@@ -480,9 +480,7 @@ async def main():
         return
 
     async def ensure_webhook():
-        info = await bot.get_webhook_info()
-        if info.url != BASE_URL + WEBHOOK_PATH:
-            await bot.set_webhook(BASE_URL + WEBHOOK_PATH, secret_token=WEBHOOK_SECRET,
+        await bot.set_webhook(BASE_URL + WEBHOOK_PATH, secret_token=WEBHOOK_SECRET,
                                   allowed_updates=["message", "callback_query"])
 
     async def startup():
@@ -504,7 +502,7 @@ async def safe_call(name, fn, attempts: int = 12):
             return
         except TelegramRetryAfter as e:
             wait = min(max(wait * 2, e.retry_after + 5), 600)
-            log.warning("%s: Telegram limiti, %s s kutamiz", name, wait)
+            log.warning("%s: Telegram limiti, %s s kutamiz | %s", name, wait, e.message)
             await asyncio.sleep(wait)
         except Exception as e:  # noqa: BLE001
             log.warning("%s: xato (%s), qayta urinamiz", name, e)
