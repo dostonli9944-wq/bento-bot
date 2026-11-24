@@ -307,36 +307,125 @@ async def on_other(m: Message):
         await m.answer("Буюртма бериш учун менюни очинг 👇", reply_markup=open_kb())
 
 
-# ---------------- Bot: operator tugmalari ----------------
-STATUS = {
-    "ok": ("✅ Қабул қилинди", "✅ Буюртмангиз қабул қилинди! Тайёрланмоқда 🍱"),
-    "go": ("🚚 Йўлга чиқди", "🚚 Буюртмангиз йўлга чиқди! Тез орада етиб боради."),
+# ---------------- Bot: buyurtma holatlari (guruh tugmalari + panel) ----------------
+import db  # noqa: E402
+
+PANEL_IDS = ADMIN_IDS | {int(x) for x in os.environ.get("PANEL_IDS", "").replace(" ", "").split(",") if x}
+PANEL_SECRET = hashlib.sha256(("panel:" + BOT_TOKEN).encode()).digest()
+
+STATUS_ICON = {"new": "🆕", "accepted": "✅", "on_way": "🚚", "delivered": "📦", "cancelled": "❌"}
+CUSTOMER_MSG = {
+    "accepted": "✅ Буюртмангиз қабул қилинди! Тайёрланмоқда 🍱",
+    "on_way": "🚚 Буюртмангиз йўлга чиқди! Тез орада етиб боради.",
+    "delivered": "📦 Буюртмангиз етказилди. Ёқимли иштаҳа! 😊",
+    "cancelled": "❌ Афсуски, буюртмангиз бекор қилинди. Саволлар бўлса, оператор билан боғланинг.",
+}
+NEXT_BTNS = {
+    "new": [("accepted", "✅ Қабул қилиш"), ("cancelled", "❌ Бекор")],
+    "accepted": [("on_way", "🚚 Йўлга чиқди"), ("cancelled", "❌ Бекор")],
+    "on_way": [("delivered", "📦 Етказилди")],
 }
 
 
-def order_kb(uid: int | str, no: int | str, step: str = "ok") -> InlineKeyboardMarkup:
-    label = STATUS[step][0]
+def order_kb(o: dict) -> InlineKeyboardMarkup | None:
+    btns = NEXT_BTNS.get(o["status"])
+    if not btns:
+        return None
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=label, callback_data=f"st:{step}:{uid}:{no}")
+        InlineKeyboardButton(text=t, callback_data=f"st:{st}:{o['id']}") for st, t in btns
     ]])
+
+
+def order_items_lines(o: dict) -> list[str]:
+    return [f"• {html.escape(i['name'])} × {i['qty']} = {som(i['qty'] * i['price'])}" for i in o["items"]]
+
+
+def order_text(o: dict) -> str:
+    created = datetime.fromisoformat(o["created_at"])
+    uname = f" (@{html.escape(o['username'])})" if o.get("username") else ""
+    t = (
+        f"🍱 <b>Буюртма №{o['no']}</b> · {created:%d.%m %H:%M}\n\n"
+        + "\n".join(order_items_lines(o))
+        + f"\n\nПорциялар: {o['qty']} та\n"
+        f"Етказиш: {'бепул' if o['fee'] == 0 else som(o['fee'])}\n"
+        f"<b>Жами: {som(o['total'])}</b>\n\n"
+        f"👤 <a href=\"tg://user?id={o['user_id']}\">{html.escape(o['name'])}</a>{uname}\n"
+        f"📞 {html.escape(o['phone'])}\n"
+        f"📍 {html.escape(o['address'])}"
+        + (f"\n💬 {html.escape(o['comment'])}" if o.get("comment") else "")
+    )
+    if o["status"] != "new":
+        upd = datetime.fromisoformat(o["updated_at"])
+        t += (f"\n\n{STATUS_ICON[o['status']]} <b>{db.STATUSES[o['status']]}</b>"
+              f" — {html.escape(o.get('status_by') or '')}, {upd:%H:%M}")
+    return t
+
+
+async def apply_status(order_id: int, status: str, by: str) -> dict | None:
+    """Holatni bazada o'zgartiradi, guruhdagi xabarni yangilaydi va mijozga xabar beradi."""
+    old = db.get_order(order_id)
+    if not old or old["status"] == status:
+        return old
+    o = db.set_status(order_id, status, by, datetime.now(TZ))
+    if o.get("group_msg_id"):
+        try:
+            await bot.edit_message_text(order_text(o), chat_id=GROUP_ID, message_id=o["group_msg_id"],
+                                        reply_markup=order_kb(o))
+        except Exception as e:  # noqa: BLE001
+            log.warning("Guruh xabarini yangilab bo'lmadi: %s", e)
+    if status in CUSTOMER_MSG:
+        try:
+            await bot.send_message(o["user_id"], f"{CUSTOMER_MSG[status]}\nБуюртма №{o['no']}")
+        except Exception as e:  # noqa: BLE001
+            log.warning("Mijozga yozib bo'lmadi: %s", e)
+    return o
+
+
+OLD_STATUS = {"ok": ("✅ Қабул қилинди", "✅ Буюртмангиз қабул қилинди! Тайёрланмоқда 🍱"),
+              "go": ("🚚 Йўлга чиқди", "🚚 Буюртмангиз йўлга чиқди! Тез орада етиб боради.")}
 
 
 @router.callback_query(F.data.startswith("st:"))
 async def on_status(cq: CallbackQuery):
-    _, step, uid, no = cq.data.split(":")
-    label, customer_text = STATUS[step]
-    try:
-        await bot.send_message(int(uid), f"{customer_text}\nБуюртма №{no}")
-    except Exception as e:  # noqa: BLE001
-        log.warning("Mijozga yozib bo'lmadi: %s", e)
-    who = html.escape(cq.from_user.full_name)
-    new_text = f"{cq.message.html_text}\n\n{label} — {who}, {datetime.now(TZ):%H:%M}"
-    kb = order_kb(uid, no, "go") if step == "ok" else None
-    try:
-        await cq.message.edit_text(new_text, reply_markup=kb)
-    except TelegramBadRequest as e:
-        log.warning("Xabarni tahrirlab bo'lmadi: %s", e)
-    await cq.answer(label)
+    parts = cq.data.split(":")
+    if len(parts) == 4:  # panelgacha bo'lgan eski xabarlar
+        _, step, uid, no = parts
+        label, customer_text = OLD_STATUS[step]
+        try:
+            await bot.send_message(int(uid), f"{customer_text}\nБуюртма №{no}")
+        except Exception as e:  # noqa: BLE001
+            log.warning("Mijozga yozib bo'lmadi: %s", e)
+        new_text = f"{cq.message.html_text}\n\n{label} — {html.escape(cq.from_user.full_name)}, {datetime.now(TZ):%H:%M}"
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=OLD_STATUS["go"][0], callback_data=f"st:go:{uid}:{no}")]]) if step == "ok" else None
+        try:
+            await cq.message.edit_text(new_text, reply_markup=kb)
+        except TelegramBadRequest as e:
+            log.warning("Xabarni tahrirlab bo'lmadi: %s", e)
+        return await cq.answer(label)
+    _, status, oid = parts
+    o = await apply_status(int(oid), status, cq.from_user.full_name)
+    await cq.answer(db.STATUSES.get(status, "") if o else "Буюртма топилмади")
+
+
+# ---------------- Bot: admin panelga kirish ----------------
+def panel_token(uid: int, ttl: int = 600) -> str:
+    exp = int(time.time()) + ttl
+    sig = hmac.new(PANEL_SECRET, f"login:{uid}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{uid}.{exp}.{sig}"
+
+
+@dp.message(Command("panel"), F.chat.type == "private")  # dp: umumiy handlerlardan oldin ishlaydi
+async def on_panel(m: Message):
+    if not m.from_user or m.from_user.id not in PANEL_IDS:
+        return await m.answer("Panelga kirish huquqingiz yo'q. ID'ingiz: "
+                              f"<code>{m.from_user.id if m.from_user else '?'}</code> — buni administratorga yuboring.")
+    url = f"{BASE_URL}/admin/login?t={panel_token(m.from_user.id)}"
+    await m.answer(
+        "🔐 Admin panelga kirish havolasi (10 daqiqa amal qiladi, bir marta kirsangiz brauzer 30 kun eslab qoladi).\n"
+        "Havolani hech kimga yubormang.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📊 Panelni ochish", url=url)]]),
+    )
 
 
 # ---------------- Web: mini app va API ----------------
@@ -391,7 +480,7 @@ async def api_order(req):
     if not is_open():
         return json_err(f"Буюртмалар фақат {ORDER_START}–{ORDER_END} оралиғида қабул қилинади.", 403)
 
-    lines, qty_total, subtotal = [], 0, 0
+    lines, items, qty_total, subtotal = [], [], 0, 0
     for it in body.get("items", []) or []:
         slot = str(it.get("slot"))
         try:
@@ -403,6 +492,7 @@ async def api_order(req):
             qty_total += qty
             subtotal += qty * d["price"]
             lines.append(f"• {html.escape(d['name'])} × {qty} = {som(qty * d['price'])}")
+            items.append({"slot": slot, "name": d["name"], "price": d["price"], "qty": qty})
     if not lines:
         return json_err("Сават бўш ёки меню ўзгарган. Саҳифани янгиланг.")
 
@@ -415,35 +505,29 @@ async def api_order(req):
 
     fee = delivery_fee(qty_total)
     total = subtotal + fee
-    no = next_order_no()
     uid = int(user["id"])
-    uname = f" (@{html.escape(user['username'])})" if user.get("username") else ""
-
-    text = (
-        f"🍱 <b>Янги буюртма №{no}</b> · {datetime.now(TZ):%d.%m %H:%M}\n\n"
-        + "\n".join(lines)
-        + f"\n\nПорциялар: {qty_total} та\n"
-        f"Етказиш: {'бепул' if fee == 0 else som(fee)}\n"
-        f"<b>Жами: {som(total)}</b>\n\n"
-        f"👤 <a href=\"tg://user?id={uid}\">{html.escape(name)}</a>{uname}\n"
-        f"📞 {html.escape(phone)}\n"
-        f"📍 {html.escape(address)}"
-        + (f"\n💬 {html.escape(comment)}" if comment else "")
-    )
-    try:
-        msg = await bot.send_message(GROUP_ID, text, reply_markup=order_kb(uid, no))
-    except Exception as e:  # noqa: BLE001
-        log.error("Buyurtma guruhga yuborilmadi: %s", e)
-        return json_err("Ҳозир буюртмани қабул қилиб бўлмади. Илтимос, бироздан кейин қайта уриниб кўринг.", 503)
-
     loc = body.get("location") or {}
     try:
         lat, lon = float(loc["lat"]), float(loc["lon"])
-        await bot.send_location(GROUP_ID, lat, lon, reply_to_message_id=msg.message_id)
     except (KeyError, TypeError, ValueError):
-        pass
+        lat = lon = None
+    o = db.create_order(
+        datetime.now(TZ), user_id=uid, username=user.get("username"), name=name, phone=phone,
+        address=address, comment=comment, lat=lat, lon=lon, items=items,
+        qty=qty_total, subtotal=subtotal, fee=fee, total=total,
+    )
+    no = o["no"]
+
+    try:
+        msg = await bot.send_message(GROUP_ID, order_text(o), reply_markup=order_kb(o))
+        db.set_group_msg(o["id"], msg.message_id)
+        if lat is not None:
+            try:
+                await bot.send_location(GROUP_ID, lat, lon, reply_to_message_id=msg.message_id)
+            except Exception as e:  # noqa: BLE001
+                log.warning("Lokatsiya yuborilmadi: %s", e)
     except Exception as e:  # noqa: BLE001
-        log.warning("Lokatsiya yuborilmadi: %s", e)
+        log.error("Buyurtma guruhga yuborilmadi (panelda bor): %s", e)
 
     try:
         await bot.send_message(
@@ -469,6 +553,8 @@ def build_app() -> web.Application:
     app.router.add_post("/api/order", api_order)
     app.router.add_get("/photo/{slot}", photo)
     app.router.add_get("/health", health)
+    import admin
+    admin.setup(app, PANEL_IDS, PANEL_SECRET, apply_status)
     if (ROOT / "static").is_dir():
         app.router.add_static("/static", ROOT / "static")
     if not USE_POLLING:

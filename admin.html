@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bento — boshqaruv paneli</title>
+<style>
+:root{--bg:#f5f3ef;--card:#fff;--ink:#1f1d1a;--mute:#7a746b;--line:#ebe6dd;--acc:#d9541e;
+--new:#2563eb;--accepted:#0d9488;--on_way:#d97706;--delivered:#16a34a;--cancelled:#9ca3af}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;flex:1}
+header .live{font-size:12px;color:var(--mute)}
+header a{color:var(--mute);text-decoration:none;font-size:13px}
+main{max-width:1200px;margin:0 auto;padding:20px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.k{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.v{font-size:26px;font-weight:700;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+.s{font-size:12px;color:var(--mute)}
+.row2{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:12px}
+h2{font-size:15px;margin:0 0 12px}
+.bars{display:flex;align-items:flex-end;gap:10px;height:140px}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.bar i{display:block;width:100%;max-width:42px;background:var(--acc);border-radius:6px 6px 2px 2px;min-height:2px}
+.bar b{font-size:11px;font-weight:600;margin-bottom:4px;font-variant-numeric:tabular-nums}
+.bar span{font-size:11px;color:var(--mute);margin-top:6px}
+.top li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)}
+.top{list-style:none;margin:0;padding:0}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0}
+.chip{padding:6px 12px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-size:13px;cursor:pointer;user-select:none}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.chip em{font-style:normal;opacity:.7;margin-left:4px}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:20px 0 12px}
+.filters h2{margin:0;flex:1}
+input[type=date],input[type=search],select{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--mute);font-weight:600;background:#faf8f4}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.fresh{animation:fl 3s}
+@keyframes fl{from{background:#fff4d6}to{background:transparent}}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.items{color:var(--mute);font-size:13px}
+a.tel{color:var(--ink);white-space:nowrap}
+.empty{padding:40px;text-align:center;color:var(--mute)}
+select.st{font-weight:600}
+@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}.v{font-size:20px}header h1{font-size:15px}.row2{grid-template-columns:1fr}
+ table,thead,tbody,tr,td{display:block}thead{display:none}tr{border-bottom:1px solid var(--line);padding:8px 0}
+ td{border:0;padding:4px 12px}td.num{text-align:left}main{padding:12px}}
+</style>
+</head>
+<body>
+<header><h1>🍱 Bento — boshqaruv paneli</h1><span class="live" id="live">yuklanmoqda…</span><a href="/admin/logout">Chiqish</a></header>
+<main>
+  <div class="grid">
+    <div class="card"><div class="k">Bugun</div><div class="v" id="t-o">–</div><div class="s" id="t-r">–</div></div>
+    <div class="card"><div class="k">Kecha</div><div class="v" id="y-o">–</div><div class="s" id="y-r">–</div></div>
+    <div class="card"><div class="k">7 kun</div><div class="v" id="w-o">–</div><div class="s" id="w-r">–</div></div>
+    <div class="card"><div class="k">O'rtacha chek (7 kun)</div><div class="v" id="avg">–</div><div class="s" id="m-r">–</div></div>
+  </div>
+  <div class="row2">
+    <div class="card"><h2>Oxirgi 7 kun — tushum</h2><div class="bars" id="bars"></div></div>
+    <div class="card"><h2>Top taomlar (7 kun)</h2><ul class="top" id="top"></ul></div>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="filters">
+    <h2>Buyurtmalar</h2>
+    <input type="search" id="q" placeholder="Ism, telefon, manzil…">
+    <input type="date" id="from"> — <input type="date" id="to">
+  </div>
+  <table>
+    <thead><tr><th>№</th><th>Vaqt</th><th>Mijoz</th><th>Manzil</th><th>Taomlar</th><th class="num">Summa</th><th>Holat</th></tr></thead>
+    <tbody id="rows"><tr><td colspan="7" class="empty">Yuklanmoqda…</td></tr></tbody>
+  </table>
+</main>
+<script>
+const ST={new:"Yangi",accepted:"Qabul qilindi",on_way:"Yo'lda",delivered:"Yetkazildi",cancelled:"Bekor qilindi"};
+const $=id=>document.getElementById(id);
+const som=n=>(n||0).toLocaleString("ru-RU").replace(/,/g," ")+" so'm";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const today=()=>new Date(Date.now()+5*3600e3).toISOString().slice(0,10); // Toshkent vaqti
+let filter="all", orders=[], seen=null;
+$("from").value=$("to").value=today();
+
+function beep(){try{const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.frequency.value=880;
+  o.connect(g);g.connect(a.destination);g.gain.setValueAtTime(.2,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.6);o.start();o.stop(a.currentTime+.6)}catch(e){}}
+async function api(url,opt){
+  const r=await fetch(url,opt);
+  if(r.status===401){location.reload();throw 0}
+  return r.json();
+}
+async function loadSummary(){
+  const s=await api("/admin/api/summary");
+  $("t-o").textContent=s.today.orders+" ta";  $("t-r").textContent=som(s.today.revenue)+" · "+s.today.portions+" porsiya";
+  $("y-o").textContent=s.yesterday.orders+" ta"; $("y-r").textContent=som(s.yesterday.revenue);
+  $("w-o").textContent=s.week.orders+" ta";  $("w-r").textContent=som(s.week.revenue);
+  $("avg").textContent=som(s.week.avg);     $("m-r").textContent="30 kun: "+som(s.month.revenue);
+  const mx=Math.max(1,...s.daily.map(d=>d.revenue));
+  $("bars").innerHTML=s.daily.map(d=>`<div class="bar" title="${d.orders} ta buyurtma"><b>${d.revenue?Math.round(d.revenue/1000)+"k":""}</b>
+    <i style="height:${d.revenue/mx*100}%"></i><span>${d.day.slice(8)}.${d.day.slice(5,7)}</span></div>`).join("");
+  $("top").innerHTML=s.top.length?s.top.map(([n,q])=>`<li><span>${esc(n)}</span><b>${q}</b></li>`).join(""):'<li class="s">Hali ma\'lumot yo\'q</li>';
+}
+async function loadOrders(){
+  const d=await api(`/admin/api/orders?from=${$("from").value}&to=${$("to").value}`);
+  const ids=new Set(d.orders.map(o=>o.id));
+  const fresh=seen?d.orders.filter(o=>!seen.has(o.id)).map(o=>o.id):[];
+  if(fresh.length){beep();
+    document.title=`(${fresh.length}) Yangi buyurtma — Bento`;}
+  seen=ids; orders=d.orders; render(new Set(fresh));
+  $("live").textContent="yangilandi "+new Date().toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
+}
+function render(fresh=new Set()){
+  const cnt={all:orders.length}; for(const k in ST)cnt[k]=orders.filter(o=>o.status===k).length;
+  $("chips").innerHTML=[["all","Hammasi"],...Object.entries(ST)].map(([k,l])=>
+    `<span class="chip ${filter===k?"on":""}" data-f="${k}">${k!=="all"?`<span class="dot" style="background:var(--${k})"></span>`:""}${l}<em>${cnt[k]}</em></span>`).join("");
+  const q=$("q").value.trim().toLowerCase();
+  const list=orders.filter(o=>(filter==="all"||o.status===filter)&&(!q||[o.name,o.phone,o.address,o.comment].join(" ").toLowerCase().includes(q)));
+  if(!list.length){$("rows").innerHTML='<tr><td colspan="7" class="empty">Bu oraliqda buyurtma yo\'q</td></tr>';return}
+  $("rows").innerHTML=list.map(o=>{
+    const map=o.lat?` · <a href="https://maps.google.com/?q=${o.lat},${o.lon}" target="_blank">xarita</a>`:"";
+    const opts=Object.entries(ST).map(([k,l])=>`<option value="${k}" ${o.status===k?"selected":""}>${l}</option>`).join("");
+    return `<tr class="${fresh.has(o.id)?"fresh":""}">
+      <td><b>${o.no}</b><div class="s">${o.day.slice(8)}.${o.day.slice(5,7)}</div></td>
+      <td>${o.created_at.slice(11,16)}</td>
+      <td>${esc(o.name)}${o.username?` <span class="s">@${esc(o.username)}</span>`:""}<br><a class="tel" href="tel:${esc(o.phone)}">${esc(o.phone)}</a></td>
+      <td>${esc(o.address)}${map}${o.comment?`<div class="s">💬 ${esc(o.comment)}</div>`:""}</td>
+      <td class="items">${o.items.map(i=>`${esc(i.name)} × ${i.qty}`).join("<br>")}</td>
+      <td class="num"><b>${som(o.total)}</b><div class="s">${o.fee?"yetkazish "+som(o.fee):"bepul yetkazish"}</div></td>
+      <td><span class="dot" style="background:var(--${o.status})"></span><select class="st" data-id="${o.id}">${opts}</select>
+        ${o.status_by?`<div class="s">${esc(o.status_by)}</div>`:""}</td></tr>`}).join("");
+}
+document.addEventListener("click",e=>{const c=e.target.closest(".chip");if(c){filter=c.dataset.f;render()}});
+document.addEventListener("change",async e=>{
+  if(e.target.matches("select.st")){
+    const r=await api(`/admin/api/orders/${e.target.dataset.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:e.target.value})});
+    if(!r.ok)alert("Xato: "+(r.error||""));
+    refresh();
+  } else if(e.target.type==="date"){seen=null;loadOrders()}
+});
+$("q").addEventListener("input",()=>render());
+window.addEventListener("focus",()=>document.title="Bento — boshqaruv paneli");
+function refresh(){loadSummary().catch(()=>{});loadOrders().catch(()=>{$("live").textContent="aloqa yo'q"})}
+refresh(); setInterval(refresh,15000);
+</script>
+</body>
+</html>
