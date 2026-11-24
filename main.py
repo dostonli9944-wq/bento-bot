@@ -158,6 +158,12 @@ async def load_menu():
             return
     except Exception as e:  # noqa: BLE001
         log.warning("Guruhdan menyuni o'qib bo'lmadi: %s", e)
+    load_menu_local()
+
+
+def load_menu_local():
+    """Telegram'ga murojaat qilmasdan fayldan menyuni yuklaydi."""
+    global menu
     for f in (MENU_FILE, ROOT / "menu_default.json"):
         if f.exists():
             menu = json.loads(f.read_text("utf-8"))
@@ -483,6 +489,7 @@ async def main():
         await safe_call("webhook", ensure_webhook)
         await safe_call("load_menu", load_menu)
 
+    load_menu_local()
     asyncio.create_task(startup())
     await asyncio.Event().wait()
 
