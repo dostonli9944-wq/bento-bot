@@ -478,10 +478,18 @@ async def main():
 
     # "🍱 Меню" tugmasi BotFather orqali (/setmenubutton) o'rnatiladi — bu yerda so'rov yubormaymiz.
     if USE_POLLING:
-        await safe_call("delete_webhook", bot.delete_webhook)
-        await safe_call("load_menu", load_menu)
-        await dp.start_polling(bot)
-        return
+        # setWebhook/deleteWebhook chaqirilmaydi — faqat getUpdates.
+        load_menu_local()
+        asyncio.create_task(safe_call("load_menu", load_menu))
+        while True:
+            try:
+                await dp.start_polling(bot, handle_signals=False)
+            except TelegramRetryAfter as e:
+                log.warning("polling: Telegram limiti, %s s | %s", e.retry_after, e.message)
+                await asyncio.sleep(e.retry_after + 5)
+            except Exception as e:  # noqa: BLE001
+                log.warning("polling xatosi: %s", e)
+                await asyncio.sleep(15)
 
     async def ensure_webhook():
         await bot.set_webhook(BASE_URL + WEBHOOK_PATH, secret_token=WEBHOOK_SECRET,
