@@ -4,10 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Bento — бугунги меню</title>
+<link rel="icon" href="/static/icon.png">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 :root{
-  --red:#D32F2F;
+  --red:#D7141A;
   --bg:var(--tg-theme-bg-color,#ffffff);
   --text:var(--tg-theme-text-color,#1b1b1b);
   --hint:var(--tg-theme-hint-color,#8a8a8a);
@@ -15,10 +16,20 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:96px;-webkit-tap-highlight-color:transparent}
-header{background:var(--red);color:#fff;padding:18px 16px 16px;display:flex;align-items:center;gap:12px}
-.logo{width:44px;height:44px;border-radius:12px;background:#fff;color:var(--red);display:flex;align-items:center;justify-content:center;font-size:24px}
-header h1{font-size:24px;font-weight:800;letter-spacing:.3px;line-height:1.1}
-header p{opacity:.9;font-size:13px;margin-top:2px}
+header{background:var(--red);color:#fff;padding:18px 16px 20px;position:relative;overflow:hidden;border-radius:0 0 24px 24px}
+header::after{content:"";position:absolute;right:-28px;top:-18px;width:150px;height:180px;background:url(/static/logo_pin.png) no-repeat center/contain;opacity:.12;transform:rotate(12deg)}
+.brand{display:flex;align-items:center;gap:12px;position:relative;z-index:1}
+.brand .mark{height:50px;width:auto}
+.brand .word{height:40px;width:auto}
+.tagline{margin-top:8px;font-size:14px;font-weight:600;opacity:.92;letter-spacing:.3px;position:relative;z-index:1}
+.today{display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:rgba(255,255,255,.18);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;position:relative;z-index:1}
+.brandmask{display:inline-block;background:var(--red);-webkit-mask:url(/static/logo_word.png) no-repeat center/contain;mask:url(/static/logo_word.png) no-repeat center/contain}
+.foot{text-align:center;padding:24px 16px 8px;color:var(--hint);font-size:12px}
+.foot .brandmask{width:84px;height:28px;display:block;margin:0 auto 4px}
+#splash{position:fixed;inset:0;z-index:50;background:var(--red);display:flex;align-items:center;justify-content:center;transition:opacity .35s}
+#splash img{width:170px;height:auto;animation:pop .6s ease-out}
+#splash.gone{opacity:0;pointer-events:none}
+@keyframes pop{from{transform:scale(.85);opacity:0}to{transform:none;opacity:1}}
 .notice{margin:12px 16px 0;padding:10px 12px;border-radius:12px;background:var(--card);font-size:13px;color:var(--hint);line-height:1.4}
 .notice.closed{background:#FDECEA;color:#B71C1C;font-weight:600}
 .list{padding:12px 12px;display:grid;gap:16px}
@@ -26,7 +37,7 @@ header p{opacity:.9;font-size:13px;margin-top:2px}
 .dish.on{box-shadow:0 0 0 2.5px var(--red)}
 .pic{position:relative;background:#efe9e3}
 .pic img{display:block;width:100%;height:auto;aspect-ratio:auto 576/800}
-.ph{display:flex;align-items:center;justify-content:center;font-size:64px;aspect-ratio:4/3}
+.ph{display:flex;align-items:center;justify-content:center;aspect-ratio:4/3;background:var(--red) url(/static/logo_pin.png) no-repeat center/auto 45%}
 .badge{position:absolute;top:10px;right:10px;background:var(--red);color:#fff;font-weight:800;font-size:15px;min-width:34px;height:34px;padding:0 10px;border-radius:17px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 .info{padding:12px 14px 14px}
 .info h3{font-size:17px;font-weight:700;line-height:1.25}
@@ -55,19 +66,18 @@ input:focus,textarea:focus{outline:none;border-color:var(--red)}
 .fallback{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--bg);box-shadow:0 -4px 16px rgba(0,0,0,.06)}
 .fallback button{width:100%;padding:15px;border:0;border-radius:14px;background:var(--red);color:#fff;font-size:16px;font-weight:700}
 .done{text-align:center;padding:72px 24px;line-height:1.5}
-.done .big{font-size:64px}
+.done .big{width:110px;height:110px;margin:0 auto;border-radius:50%;background:var(--red) url(/static/logo_pin.png) no-repeat center 48%/auto 58%;box-shadow:0 8px 24px rgba(215,20,26,.3);animation:pop .5s ease-out}
 .done h2{padding:12px 0 6px;font-size:22px}
 .hidden{display:none!important}
 </style>
 </head>
 <body>
 
+<div id="splash"><img src="/static/logo_full.png" alt="Bento"></div>
 <header>
-  <div class="logo">📍</div>
-  <div>
-    <h1>Bento</h1>
-    <p>тушлик · тез · иссиқ</p>
-  </div>
+  <div class="brand"><img class="mark" src="/static/logo_mark.png" alt=""><img class="word" src="/static/logo_word.png" alt="Bento"></div>
+  <div class="tagline">тушлик · тез · иссиқ</div>
+  <div class="today" id="today">🍱 Бугунги меню</div>
 </header>
 
 <div id="notice" class="notice">Юкланмоқда…</div>
@@ -76,6 +86,7 @@ input:focus,textarea:focus{outline:none;border-color:var(--red)}
 <section id="menuScreen">
   <div id="list" class="list"></div>
   <div id="menuSummary" class="summary hidden"></div>
+  <div class="foot"><span class="brandmask"></span>тушлик · тез · иссиқ</div>
 </section>
 
 <!-- 2. Rasmiylashtirish -->
@@ -102,7 +113,7 @@ input:focus,textarea:focus{outline:none;border-color:var(--red)}
 <!-- 3. Tayyor -->
 <section id="doneScreen" class="hidden">
   <div class="done">
-    <div class="big">✅</div>
+    <div class="big"></div>
     <h2>Раҳмат!</h2>
     <p id="doneText">Буюртмангиз қабул қилинди. Тез орада оператор боғланади.</p>
   </div>
@@ -113,7 +124,7 @@ input:focus,textarea:focus{outline:none;border-color:var(--red)}
 <script>
 const tg = window.Telegram && window.Telegram.WebApp;
 const inTG = !!(tg && tg.initData);
-const RED = '#D32F2F';
+const RED = '#D7141A';
 let M = null;                 // /api/menu javobi
 const cart = {};              // {slot: qty}
 let screen = 'menu';
@@ -163,7 +174,7 @@ function summaryHTML() {
 function renderMenu() {
   const list = $('list');
   if (!M.dishes.length) {
-    list.innerHTML = `<div class="empty">🍱<br>Бугунги меню ҳали қўшилмаган.<br>Бироздан сўнг қайта киринг.</div>`;
+    list.innerHTML = `<div class="empty"><div class="done" style="padding:0 0 12px"><div class="big"></div></div>Бугунги меню ҳали қўшилмаган.<br>Бироздан сўнг қайта киринг.</div>`;
   } else {
     list.innerHTML = M.dishes.map(d => {
       const q = cart[d.slot] || 0;
@@ -317,12 +328,17 @@ async function submit() {
 }
 
 // ---------- start ----------
+function hideSplash() { const sp = $('splash'); if (sp) { sp.classList.add('gone'); setTimeout(() => sp.remove(), 400); } }
+setTimeout(hideSplash, 3000);
 async function init() {
+  const MO = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+  const d = new Date(); $('today').textContent = `🍱 Бугунги меню · ${d.getDate()}-${MO[d.getMonth()]}`;
   try {
     const r = await fetch('/api/menu', { cache: 'no-store' });
     M = await r.json();
   } catch (e) {
     $('notice').textContent = 'Менюни юклаб бўлмади. Интернетни текширинг.';
+    hideSplash();
     return;
   }
   const n = $('notice');
@@ -334,6 +350,7 @@ async function init() {
   }
   loadProfile();
   renderMenu();
+  setTimeout(hideSplash, 500);
 }
 init();
 </script>
