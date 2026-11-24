@@ -59,7 +59,13 @@ MENU_MARK = "#BENTO_MENU"
 WEBHOOK_PATH = "/tg/" + hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:24]
 WEBHOOK_SECRET = hashlib.sha256(("secret:" + BOT_TOKEN).encode()).hexdigest()[:32]
 
-bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+BOT_API_URL = os.environ.get("BOT_API_URL", "").rstrip("/")  # o'zimizning Bot API server (ixtiyoriy)
+_session = None
+if BOT_API_URL:
+    from aiogram.client.session.aiohttp import AiohttpSession
+    from aiogram.client.telegram import TelegramAPIServer
+    _session = AiohttpSession(api=TelegramAPIServer.from_base(BOT_API_URL))
+bot = Bot(BOT_TOKEN, session=_session, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
