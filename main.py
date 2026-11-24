@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
     CallbackQuery,
@@ -460,19 +460,40 @@ async def main():
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
     log.info("Server %s portda ishga tushdi", PORT)
 
-    await load_menu()
-    if BASE_URL:
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(text="🍱 Меню", web_app=WebAppInfo(url=BASE_URL + "/"))
-        )
     if USE_POLLING:
-        await bot.delete_webhook()
+        await safe_call("delete_webhook", bot.delete_webhook)
+    else:
+        async def ensure_webhook():
+            info = await bot.get_webhook_info()
+            if info.url != BASE_URL + WEBHOOK_PATH:
+                await bot.set_webhook(BASE_URL + WEBHOOK_PATH, secret_token=WEBHOOK_SECRET,
+                                      allowed_updates=["message", "callback_query"])
+        await safe_call("webhook", ensure_webhook)
+    await safe_call("load_menu", load_menu)
+    if BASE_URL:
+        await safe_call("menu_button", lambda: bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="🍱 Меню", web_app=WebAppInfo(url=BASE_URL + "/"))
+        ))
+    if USE_POLLING:
         await dp.start_polling(bot)
     else:
-        await bot.set_webhook(BASE_URL + WEBHOOK_PATH, secret_token=WEBHOOK_SECRET,
-                              allowed_updates=["message", "callback_query"])
-        log.info("Webhook o'rnatildi")
         await asyncio.Event().wait()
+
+
+async def safe_call(name, fn, attempts: int = 5):
+    """Ishga tushishdagi Telegram so'rovlari: limitga tushsa kutib qayta urinadi, server yiqilmaydi."""
+    for i in range(attempts):
+        try:
+            await fn()
+            log.info("%s: OK", name)
+            return
+        except TelegramRetryAfter as e:
+            log.warning("%s: Telegram limiti, %s s kutamiz", name, e.retry_after)
+            await asyncio.sleep(e.retry_after + 1)
+        except Exception as e:  # noqa: BLE001
+            log.warning("%s: xato (%s), qayta urinamiz", name, e)
+            await asyncio.sleep(3 * (i + 1))
+    log.error("%s: bajarilmadi", name)
 
 
 if __name__ == "__main__":
