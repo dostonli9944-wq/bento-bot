@@ -331,6 +331,101 @@ NEXT_BTNS = {
 }
 
 
+PAY_ICON = {"pending": "⏳", "sent": "🧾", "paid": "✅", "rejected": "❌"}
+
+
+def pay_line(o: dict) -> str:
+    if o.get("payment") != "card":
+        return "\n\n💵 <b>Тўлов: Нақд</b>"
+    ps = o.get("pay_status") or "pending"
+    t = f"\n\n💳 <b>Тўлов: Карта</b> — {PAY_ICON[ps]} {db.PAY_STATUSES[ps]}"
+    if ps in ("paid", "rejected") and o.get("pay_by"):
+        t += f" ({html.escape(o['pay_by'])})"
+    return t
+
+
+def receipt_kb(oid: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Тўлов қабул қилинди", callback_data=f"pay:ok:{oid}"),
+        InlineKeyboardButton(text="❌ Рад этиш", callback_data=f"pay:no:{oid}"),
+    ]])
+
+
+async def refresh_group_msg(o: dict):
+    if o.get("group_msg_id"):
+        try:
+            await bot.edit_message_text(order_text(o), chat_id=GROUP_ID, message_id=o["group_msg_id"],
+                                        reply_markup=order_kb(o))
+        except Exception as e:  # noqa: BLE001
+            log.warning("Guruh xabarini yangilab bo'lmadi: %s", e)
+
+
+async def submit_receipt(o: dict, photo, by_name: str) -> None:
+    """Chekni guruhga yuboradi va mijozga 'tekshirilmoqda' deb xabar beradi.
+    photo — Telegram file_id yoki BufferedInputFile."""
+    caption = (f"🧾 <b>Тўлов чеки — буюртма №{o['no']}</b>\n"
+               f"Сумма: <b>{som(o['total'])}</b>\n👤 {html.escape(o['name'])} · {html.escape(o['phone'])}")
+    msg_id, file_id = None, photo if isinstance(photo, str) else None
+    try:
+        kw = {"reply_to_message_id": o["group_msg_id"]} if o.get("group_msg_id") else {}
+        msg = await bot.send_photo(GROUP_ID, photo, caption=caption, reply_markup=receipt_kb(o["id"]), **kw)
+        msg_id, file_id = msg.message_id, msg.photo[-1].file_id
+    except Exception as e:  # noqa: BLE001
+        log.error("Chek guruhga yuborilmadi: %s", e)
+    db.set_receipt(o["id"], file_id or "", msg_id)
+    await refresh_group_msg(db.get_order(o["id"]))
+    try:
+        await bot.send_message(o["user_id"], f"🧾 Чекингиз қабул қилинди (буюртма №{o['no']}).\n"
+                               "Тез орада тўловингиз ҳақида жавоб берамиз.")
+    except Exception as e:  # noqa: BLE001
+        log.warning("Mijozga yozib bo'lmadi: %s", e)
+
+
+async def apply_pay(order_id: int, ok: bool, by: str) -> dict | None:
+    o = db.get_order(order_id)
+    if not o or o.get("payment") != "card":
+        return None
+    o = db.set_pay_status(order_id, "paid" if ok else "rejected", by)
+    await refresh_group_msg(o)
+    if o.get("receipt_msg_id"):
+        try:
+            await bot.edit_message_caption(
+                chat_id=GROUP_ID, message_id=o["receipt_msg_id"],
+                caption=(f"🧾 <b>Тўлов чеки — буюртма №{o['no']}</b>\nСумма: <b>{som(o['total'])}</b>\n\n"
+                         + ("✅ Тўлов қабул қилинди" if ok else "❌ Рад этилди")
+                         + f" — {html.escape(by)}, {datetime.now(TZ):%H:%M}"),
+                reply_markup=None)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Chek xabarini yangilab bo'lmadi: %s", e)
+    text = (f"✅ Тўловингиз қабул қилинди! Раҳмат.\nБуюртма №{o['no']}" if ok else
+            f"❌ Буюртма №{o['no']} бўйича тўлов тасдиқланмади.\n"
+            "Илтимос, тўғри чек скриншотини шу ерга юборинг ёки оператор билан боғланинг.")
+    try:
+        await bot.send_message(o["user_id"], text)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Mijozga yozib bo'lmadi: %s", e)
+    return o
+
+
+@router.callback_query(F.data.startswith("pay:"))
+async def on_pay_cb(cq: CallbackQuery):
+    _, act, oid = cq.data.split(":")
+    o = await apply_pay(int(oid), act == "ok", cq.from_user.full_name)
+    await cq.answer(("Тўлов тасдиқланди" if act == "ok" else "Рад этилди") if o else "Буюртма топилмади")
+
+
+async def _awaits_receipt(m: Message) -> dict | bool:
+    if not m.from_user or not m.photo or m.chat.type != "private":
+        return False
+    o = db.awaiting_receipt(m.from_user.id)
+    return {"rcpt_order": o} if o else False
+
+
+@dp.message(_awaits_receipt)  # mijoz chekni bot chatiga rasm qilib yuborsa
+async def on_receipt_photo(m: Message, rcpt_order: dict):
+    await submit_receipt(rcpt_order, m.photo[-1].file_id, m.from_user.full_name)
+
+
 def order_kb(o: dict) -> InlineKeyboardMarkup | None:
     btns = NEXT_BTNS.get(o["status"])
     if not btns:
@@ -357,7 +452,7 @@ def order_text(o: dict) -> str:
         f"📞 {html.escape(o['phone'])}\n"
         f"📍 {html.escape(o['address'])}"
         + (f"\n💬 {html.escape(o['comment'])}" if o.get("comment") else "")
-        + ("\n\n💳 <b>Тўлов: Карта орқали</b>" if o.get("payment") == "card" else "\n\n💵 <b>Тўлов: Нақд</b>")
+        + pay_line(o)
     )
     if o["status"] != "new":
         upd = datetime.fromisoformat(o["updated_at"])
@@ -372,12 +467,7 @@ async def apply_status(order_id: int, status: str, by: str) -> dict | None:
     if not old or old["status"] == status:
         return old
     o = db.set_status(order_id, status, by, datetime.now(TZ))
-    if o.get("group_msg_id"):
-        try:
-            await bot.edit_message_text(order_text(o), chat_id=GROUP_ID, message_id=o["group_msg_id"],
-                                        reply_markup=order_kb(o))
-        except Exception as e:  # noqa: BLE001
-            log.warning("Guruh xabarini yangilab bo'lmadi: %s", e)
+    await refresh_group_msg(o)
     if status in CUSTOMER_MSG:
         try:
             await bot.send_message(o["user_id"], f"{CUSTOMER_MSG[status]}\nБуюртма №{o['no']}")
@@ -512,8 +602,8 @@ def pay_note(payment: str, total: int) -> str:
     if CARD_NUMBER:
         owner = f" ({html.escape(CARD_OWNER)})" if CARD_OWNER else ""
         return (f"💳 Тўлов: карта орқали.\n<b>{som(total)}</b> ни <code>{html.escape(CARD_NUMBER)}</code>{owner} "
-                "картасига ўтказинг ва чек скриншотини операторга юборинг.\n")
-    return "💳 Тўлов: карта орқали — оператор карта рақамини юборади.\n"
+                "картасига ўтказинг ва чек скриншотини шу чатга юборинг.\n")
+    return "💳 Тўлов: карта орқали — оператор карта рақамини юборади, кейин чек скриншотини шу чатга юборасиз.\n"
 
 
 async def api_order(req):
@@ -587,22 +677,50 @@ async def api_order(req):
     except Exception as e:  # noqa: BLE001
         log.warning("Mijozga tasdiq yuborilmadi: %s", e)
 
-    return web.json_response({"ok": True, "no": no, "total": total, "payment": payment})
+    return web.json_response({"ok": True, "no": no, "id": o["id"], "total": total, "payment": payment})
 
 
 async def health(_req):
     return web.Response(text="ok")
 
 
+async def api_receipt(req):
+    try:
+        data = await req.post()
+    except Exception:  # noqa: BLE001
+        return json_err("Файл юкланмади")
+    user = check_init_data(str(data.get("initData", "")))
+    if not user:
+        return json_err("Илтимос, менюни Telegram бот орқали очинг.", 401)
+    try:
+        o = db.get_order(int(data.get("order_id", 0)))
+    except (TypeError, ValueError):
+        o = None
+    if not o or o["user_id"] != int(user["id"]) or o.get("payment") != "card":
+        return json_err("Буюртма топилмади", 404)
+    if o.get("pay_status") == "paid":
+        return json_err("Бу буюртма тўлови аллақачон тасдиқланган.")
+    f = data.get("file")
+    if not hasattr(f, "file"):
+        return json_err("Скриншотни танланг")
+    raw = f.file.read()
+    if not raw or len(raw) > 8 * 1024 * 1024:
+        return json_err("Расм ҳажми катта ёки бўш")
+    from aiogram.types import BufferedInputFile
+    await submit_receipt(o, BufferedInputFile(raw, filename="chek.jpg"), user.get("first_name", ""))
+    return web.json_response({"ok": True})
+
+
 def build_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(client_max_size=10 * 1024 * 1024)
+    app.router.add_post("/api/receipt", api_receipt)
     app.router.add_get("/", index)
     app.router.add_get("/api/menu", api_menu)
     app.router.add_post("/api/order", api_order)
     app.router.add_get("/photo/{slot}", photo)
     app.router.add_get("/health", health)
     import admin
-    admin.setup(app, PANEL_IDS, PANEL_SECRET, apply_status)
+    admin.setup(app, PANEL_IDS, PANEL_SECRET, apply_status, apply_pay, bot)
     if (ROOT / "static").is_dir():
         app.router.add_static("/static", ROOT / "static")
     if not USE_POLLING:

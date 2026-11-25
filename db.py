@@ -11,6 +11,8 @@ DB_PATH = os.environ.get("DB_PATH") or (
 )
 
 PAYMENTS = {"cash": "Нақд", "card": "Карта"}
+# karta to'lovi holati: pending — chek kutilmoqda, sent — chek yuborildi, paid — tasdiqlandi, rejected — rad etildi
+PAY_STATUSES = {"pending": "Чек кутилмоқда", "sent": "Чек юборилди", "paid": "Тўланди", "rejected": "Рад этилди"}
 
 STATUSES = {
     "new": "Янги",
@@ -43,6 +45,10 @@ def conn() -> sqlite3.Connection:
         cols = {r[1] for r in _conn.execute("PRAGMA table_info(orders)")}
         if "payment" not in cols:
             _conn.execute("ALTER TABLE orders ADD COLUMN payment TEXT DEFAULT 'cash'")
+        for col, typ in (("pay_status", "TEXT DEFAULT ''"), ("receipt_file_id", "TEXT"), ("receipt_msg_id", "INTEGER"),
+                         ("pay_by", "TEXT")):
+            if col not in cols:
+                _conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {typ}")
         _conn.commit()
     return _conn
 
@@ -55,6 +61,7 @@ def _row(r: sqlite3.Row | None) -> dict | None:
     d["status_label"] = STATUSES.get(d["status"], d["status"])
     d["payment"] = d.get("payment") or "cash"
     d["payment_label"] = PAYMENTS.get(d["payment"], d["payment"])
+    d["pay_status"] = d.get("pay_status") or ("pending" if d["payment"] == "card" else "")
     return d
 
 
@@ -64,12 +71,13 @@ def create_order(now: datetime, **o) -> dict:
     no = c.execute("SELECT COUNT(*) FROM orders WHERE day=?", (day,)).fetchone()[0] + 1
     cur = c.execute(
         """INSERT INTO orders(no, day, created_at, updated_at, user_id, username, name, phone, address,
-               comment, lat, lon, items, qty, subtotal, fee, total, payment)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               comment, lat, lon, items, qty, subtotal, fee, total, payment, pay_status)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (no, day, now.isoformat(timespec="seconds"), now.isoformat(timespec="seconds"),
          o["user_id"], o.get("username"), o["name"], o["phone"], o["address"], o.get("comment", ""),
          o.get("lat"), o.get("lon"), json.dumps(o["items"], ensure_ascii=False),
-         o["qty"], o["subtotal"], o["fee"], o["total"], o.get("payment") or "cash"),
+         o["qty"], o["subtotal"], o["fee"], o["total"], o.get("payment") or "cash",
+         "pending" if o.get("payment") == "card" else ""),
     )
     c.commit()
     return get_order(cur.lastrowid)
@@ -149,3 +157,27 @@ def wipe_orders() -> int:
     c.execute("DELETE FROM sqlite_sequence WHERE name='orders'")
     c.commit()
     return n
+
+
+def set_receipt(order_id: int, file_id: str, msg_id: int | None):
+    conn().execute("UPDATE orders SET pay_status='sent', receipt_file_id=?, receipt_msg_id=? WHERE id=?",
+                   (file_id, msg_id, order_id))
+    conn().commit()
+
+
+def set_pay_status(order_id: int, status: str, by: str) -> dict | None:
+    if status not in PAY_STATUSES:
+        raise ValueError(status)
+    conn().execute("UPDATE orders SET pay_status=?, pay_by=? WHERE id=?", (status, by, order_id))
+    conn().commit()
+    return get_order(order_id)
+
+
+def awaiting_receipt(user_id: int) -> dict | None:
+    """Mijozning chek kutilayotgan eng oxirgi karta buyurtmasi (oxirgi 2 kun)."""
+    since = (date.today() - timedelta(days=1)).isoformat()
+    r = conn().execute(
+        """SELECT * FROM orders WHERE user_id=? AND payment='card' AND status!='cancelled'
+           AND COALESCE(pay_status,'pending') IN ('pending','rejected') AND day>=?
+           ORDER BY id DESC LIMIT 1""", (user_id, since)).fetchone()
+    return _row(r)

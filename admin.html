@@ -48,6 +48,10 @@ a.tel{color:var(--ink);white-space:nowrap}
 select.st{font-weight:600}
 .pm{display:inline-block;margin-top:4px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:#eef7ee;color:#166534}
 .pm.card{background:#eef2ff;color:#3730a3}
+.ps{display:inline-block;margin-top:4px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px}
+a.rc{font-size:12px;color:#1e40af}
+.pb{display:flex;gap:6px;margin-top:6px;justify-content:flex-end}
+.pb button{font:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 8px;cursor:pointer}
 @media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}.v{font-size:20px}header h1{font-size:15px}.row2{grid-template-columns:1fr}
  table,thead,tbody,tr,td{display:block}thead{display:none}tr{border-bottom:1px solid var(--line);padding:8px 0}
  td{border:0;padding:4px 12px}td.num{text-align:left}main{padding:12px}}
@@ -122,6 +126,17 @@ async function loadOrders(){
   seen=ids; orders=d.orders; render(new Set(fresh));
   $("live").textContent="yangilandi "+new Date().toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
 }
+const PS={pending:["⏳","Chek kutilmoqda","#92400e","#fef3c7"],sent:["🧾","Chek keldi — tekshiring","#1e40af","#dbeafe"],
+  paid:["✅","To'landi","#166534","#dcfce7"],rejected:["❌","Rad etildi","#991b1b","#fee2e2"]};
+function payHtml(o){
+  if(o.payment!=="card")return"";
+  const p=PS[o.pay_status]||PS.pending;
+  let h=`<div class="ps" style="color:${p[2]};background:${p[3]}">${p[0]} ${p[1]}</div>`;
+  if(o.receipt_file_id)h+=`<div><a href="/admin/api/orders/${o.id}/receipt" target="_blank" class="rc">🧾 Chekni ko'rish</a></div>`;
+  if(o.pay_status==="sent"||o.pay_status==="pending"||o.pay_status==="rejected")
+    h+=`<div class="pb"><button data-pay="1" data-id="${o.id}">✅ Qabul</button>${o.pay_status!=="rejected"?`<button data-pay="0" data-id="${o.id}">❌ Rad</button>`:""}</div>`;
+  return h;
+}
 function render(fresh=new Set()){
   const cnt={all:orders.length}; for(const k in ST)cnt[k]=orders.filter(o=>o.status===k).length;
   $("chips").innerHTML=[["all","Hammasi"],...Object.entries(ST)].map(([k,l])=>
@@ -138,11 +153,18 @@ function render(fresh=new Set()){
       <td>${esc(o.name)}${o.username?` <span class="s">@${esc(o.username)}</span>`:""}<br><a class="tel" href="tel:${esc(o.phone)}">${esc(o.phone)}</a></td>
       <td>${esc(o.address)}${map}${o.comment?`<div class="s">💬 ${esc(o.comment)}</div>`:""}</td>
       <td class="items">${o.items.map(i=>`${esc(i.name)} × ${i.qty}`).join("<br>")}</td>
-      <td class="num"><b>${som(o.total)}</b><div class="s">${o.fee?"yetkazish "+som(o.fee):"bepul yetkazish"}</div><div class="pm ${o.payment}">${o.payment==="card"?"💳 Karta":"💵 Naqd"}</div></td>
+      <td class="num"><b>${som(o.total)}</b><div class="s">${o.fee?"yetkazish "+som(o.fee):"bepul yetkazish"}</div><div class="pm ${o.payment}">${o.payment==="card"?"💳 Karta":"💵 Naqd"}</div>${payHtml(o)}</td>
       <td><span class="dot" style="background:var(--${o.status})"></span><select class="st" data-id="${o.id}">${opts}</select>
         ${o.status_by?`<div class="s">${esc(o.status_by)}</div>`:""}</td></tr>`}).join("");
 }
-document.addEventListener("click",e=>{const c=e.target.closest(".chip");if(c){filter=c.dataset.f;render()}});
+document.addEventListener("click",async e=>{
+  const c=e.target.closest(".chip");if(c){filter=c.dataset.f;render();return}
+  const b=e.target.closest("button[data-pay]");
+  if(b){const ok=b.dataset.pay==="1";
+    if(!confirm(ok?"To'lov qabul qilinsinmi? Mijozga xabar boradi.":"To'lov rad etilsinmi? Mijozga qayta chek yuborish so'raladi."))return;
+    const r=await api(`/admin/api/orders/${b.dataset.id}/pay`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ok})});
+    if(!r.ok)alert("Xato: "+(r.error||""));refresh();}
+});
 document.addEventListener("change",async e=>{
   if(e.target.matches("select.st")){
     const r=await api(`/admin/api/orders/${e.target.dataset.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:e.target.value})});

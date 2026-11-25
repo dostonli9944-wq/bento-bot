@@ -122,12 +122,37 @@ async def api_set_status(req):
 
 
 @need_login
+async def api_set_pay(req):
+    try:
+        oid = int(req.match_info["id"])
+        ok = bool((await req.json()).get("ok"))
+    except Exception:  # noqa: BLE001
+        return web.json_response({"ok": False, "error": "bad request"}, status=400)
+    uid = current_user(req)
+    o = await _cfg["apply_pay"](oid, ok, f"Panel ({uid})")
+    if not o:
+        return web.json_response({"ok": False, "error": "topilmadi"}, status=404)
+    return web.json_response({"ok": True, "order": o})
+
+
+@need_login
+async def api_receipt(req):
+    o = db.get_order(int(req.match_info["id"]))
+    if not o or not o.get("receipt_file_id"):
+        return web.Response(status=404, text="Chek yo'q")
+    buf = await _cfg["bot"].download(o["receipt_file_id"])
+    return web.Response(body=buf.read(), content_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+
+
+@need_login
 async def api_me(req):
     return web.json_response({"id": current_user(req)})
 
 
-def setup(app: web.Application, ids: set[int], secret: bytes, apply_status):
-    _cfg.update(ids=ids, secret=secret, apply=apply_status)
+def setup(app: web.Application, ids: set[int], secret: bytes, apply_status, apply_pay=None, bot=None):
+    _cfg.update(ids=ids, secret=secret, apply=apply_status, apply_pay=apply_pay, bot=bot)
+    app.router.add_post("/admin/api/orders/{id}/pay", api_set_pay)
+    app.router.add_get("/admin/api/orders/{id}/receipt", api_receipt)
     app.router.add_get("/admin", page)
     app.router.add_get("/admin/", page)
     app.router.add_get("/admin/login", login)

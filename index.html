@@ -62,6 +62,12 @@ header::after{content:"";position:absolute;right:-28px;top:-18px;width:150px;hei
 .pay button.on{border-color:var(--red);background:rgba(215,20,26,.07)}
 .cardbox{margin-top:10px;background:var(--card);border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.45}
 .cardbox b{font-size:17px;letter-spacing:.5px}
+.bigbtn{display:block;width:100%;margin-top:12px;border:0;border-radius:14px;background:var(--red);color:#fff;font-size:16px;font-weight:800;padding:15px}
+.bigbtn:disabled{opacity:.45}
+.upl{display:block;margin-top:10px;border:2px dashed var(--red);border-radius:14px;padding:16px;text-align:center;color:var(--red);font-weight:700;cursor:pointer}
+.upl input{display:none}
+#rcptPrev{display:block;max-width:100%;max-height:300px;margin:12px auto 0;border-radius:10px}
+#rcptPrev.hidden{display:none}
 .cardbox button{margin-top:8px;border:0;background:var(--red);color:#fff;border-radius:10px;padding:8px 14px;font-weight:700;font-size:13px}
 h2{font-size:18px;padding:16px 16px 4px}
 form{padding:8px 16px;display:grid;gap:12px}
@@ -131,7 +137,20 @@ input:focus,textarea:focus{outline:none;border-color:var(--red)}
     <div class="big"></div>
     <h2>Раҳмат!</h2>
     <p id="doneText">Буюртмангиз қабул қилинди. Тез орада оператор боғланади.</p>
-    <div id="donePay" class="cardbox hidden" style="text-align:left;margin-top:16px"></div>
+    <div id="donePay" class="hidden" style="text-align:left;margin-top:16px">
+      <div id="donePayCard" class="cardbox"></div>
+      <button type="button" id="paidBtn" class="bigbtn">✅ Тўлов қилдим</button>
+      <div id="rcptBox" class="cardbox hidden">
+        <b style="font-size:15px">Тўлов чекининг скриншотини юкланг</b>
+        <label class="upl"><input type="file" id="rcpt" accept="image/*">📎 Скриншотни танлаш</label>
+        <img id="rcptPrev" class="hidden" alt="">
+        <button type="button" id="rcptSend" class="bigbtn" disabled>📤 Чекни юбориш</button>
+      </div>
+      <div id="rcptDone" class="cardbox hidden" style="text-align:center">
+        <div style="font-size:34px">🕐</div>
+        <b>Чек юборилди!</b><br>Тез орада тўловингиз ҳақида жавоб берамиз. Хабар шу бот орқали келади.
+      </div>
+    </div>
   </div>
 </section>
 
@@ -284,13 +303,60 @@ function saveProfile() {
 
 // ---------- lokatsiya ----------
 let payment = 'cash';
+let lastOrder = null, rcptBlob = null;
+$('paidBtn').addEventListener('click', () => {
+  $('paidBtn').classList.add('hidden');
+  $('rcptBox').classList.remove('hidden');
+  $('rcptBox').scrollIntoView({ behavior: 'smooth' });
+});
+function shrink(file) {   // katta skrinshotni 1600px gacha kichraytiradi
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = img.width * k; c.height = img.height * k;
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => res(b || file), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => res(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+$('rcpt').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  rcptBlob = await shrink(f);
+  $('rcptPrev').src = URL.createObjectURL(rcptBlob);
+  $('rcptPrev').classList.remove('hidden');
+  $('rcptSend').disabled = false;
+});
+$('rcptSend').addEventListener('click', async () => {
+  if (!rcptBlob || !lastOrder) return;
+  const btn = $('rcptSend'); btn.disabled = true; btn.textContent = '⏳ Юборилмоқда...';
+  try {
+    const fd = new FormData();
+    fd.append('initData', tg ? tg.initData : '');
+    fd.append('order_id', lastOrder.id);
+    fd.append('file', rcptBlob, 'chek.jpg');
+    const r = await fetch('/api/receipt', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Хатолик');
+    $('rcptBox').classList.add('hidden');
+    $('rcptDone').classList.remove('hidden');
+    try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
+    if (inTG) setTimeout(() => tg.close(), 4000);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '📤 Чекни юбориш';
+    alertMsg(e.message || 'Юборилмади. Скриншотни шу ботга чатда юборсангиз ҳам бўлади.');
+  }
+});
 function cardHtml(total) {
   const c = M && M.card;
-  if (!c) return 'Карта рақамини оператор сизга юборади. Тўловдан кейин чек скриншотини юборинг.';
+  if (!c) return 'Карта рақамини оператор сизга юборади. Тўлагач, «✅ Тўлов қилдим» тугмасини босиб, чек скриншотини юборинг.';
   return `${total ? `<b>${som(total)}</b> ни қуйидаги картага ўтказинг:<br>` : 'Буюртмадан кейин қуйидаги картага ўтказасиз:<br>'}`
     + `<b>${esc(c.number)}</b>${c.owner ? `<br>${esc(c.owner)}` : ''}`
     + `<br><button type="button" class="copycard">📋 Рақамни нусхалаш</button>`
-    + (total ? '<br><small>Тўловдан кейин чек скриншотини операторга юборинг.</small>' : '');
+    + (total ? '<br><small>Тўлагач, пастдаги «✅ Тўлов қилдим» тугмасини босинг.</small>' : '');
 }
 function setPay(p) {
   payment = p === 'card' ? 'card' : 'cash';
@@ -358,7 +424,7 @@ async function submit() {
     $('doneText').textContent = `Буюртма №${j.no} қабул қилинди. Жами: ${som(j.total)}. Тез орада оператор боғланади.`;
     const dp = $('donePay');
     dp.classList.toggle('hidden', j.payment !== 'card');
-    if (j.payment === 'card') dp.innerHTML = '💳 ' + cardHtml(j.total);
+    if (j.payment === 'card') { lastOrder = j; $('donePayCard').innerHTML = '💳 ' + cardHtml(j.total); }
     try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
     show('done');
     if (inTG && j.payment !== 'card') setTimeout(() => tg.close(), 3500);
