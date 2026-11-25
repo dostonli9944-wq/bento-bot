@@ -181,3 +181,14 @@ def awaiting_receipt(user_id: int) -> dict | None:
            AND COALESCE(pay_status,'pending') IN ('pending','rejected') AND day>=?
            ORDER BY id DESC LIMIT 1""", (user_id, since)).fetchone()
     return _row(r)
+
+
+def day_sales(day: str) -> dict:
+    """Bir kunlik taomlar bo'yicha sotuv: {nom: {"qty": n, "sum": so'm}} (bekor qilinganlarsiz)."""
+    out: dict = {}
+    for r in conn().execute("SELECT items FROM orders WHERE day=? AND status!='cancelled'", (day,)):
+        for it in json.loads(r["items"] or "[]"):
+            d = out.setdefault(it["name"], {"qty": 0, "sum": 0})
+            d["qty"] += it["qty"]
+            d["sum"] += it["qty"] * it["price"]
+    return out

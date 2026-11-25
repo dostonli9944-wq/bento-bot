@@ -720,7 +720,8 @@ def build_app() -> web.Application:
     app.router.add_get("/photo/{slot}", photo)
     app.router.add_get("/health", health)
     import admin
-    admin.setup(app, PANEL_IDS, PANEL_SECRET, apply_status, apply_pay, bot)
+    admin.setup(app, PANEL_IDS, PANEL_SECRET, apply_status, apply_pay, bot,
+                lambda: [menu[k] for k in sorted(menu, key=lambda x: int(x) if str(x).isdigit() else 99)])
     if (ROOT / "static").is_dir():
         app.router.add_static("/static", ROOT / "static")
     if not USE_POLLING:

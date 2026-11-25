@@ -86,7 +86,17 @@ async def page(req):
 
 @need_login
 async def api_summary(_req):
-    return web.json_response(db.summary(datetime.now(TZ).date()))
+    today = datetime.now(TZ).date()
+    res = db.summary(today)
+    sales = db.day_sales(today.isoformat())
+    rows = []
+    for d in (_cfg["menu"]() if _cfg.get("menu") else []):   # bugungi menyu tartibida, sotilmaganlar 0 bilan
+        s = sales.pop(d["name"], {"qty": 0, "sum": 0})
+        rows.append({"name": d["name"], **s})
+    for name, s in sorted(sales.items(), key=lambda x: -x[1]["qty"]):  # menyudan olib tashlangan, lekin bugun sotilgan
+        rows.append({"name": name, **s})
+    res["today_sales"] = rows
+    return web.json_response(res)
 
 
 def _day(s: str | None, default: date) -> str:
@@ -149,8 +159,8 @@ async def api_me(req):
     return web.json_response({"id": current_user(req)})
 
 
-def setup(app: web.Application, ids: set[int], secret: bytes, apply_status, apply_pay=None, bot=None):
-    _cfg.update(ids=ids, secret=secret, apply=apply_status, apply_pay=apply_pay, bot=bot)
+def setup(app: web.Application, ids: set[int], secret: bytes, apply_status, apply_pay=None, bot=None, menu=None):
+    _cfg.update(ids=ids, secret=secret, apply=apply_status, apply_pay=apply_pay, bot=bot, menu=menu)
     app.router.add_post("/admin/api/orders/{id}/pay", api_set_pay)
     app.router.add_get("/admin/api/orders/{id}/receipt", api_receipt)
     app.router.add_get("/admin", page)
