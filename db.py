@@ -10,6 +10,8 @@ DB_PATH = os.environ.get("DB_PATH") or (
     "/data/bento.db" if Path("/data").is_dir() else str(Path(__file__).parent / "bento.db")
 )
 
+PAYMENTS = {"cash": "Нақд", "card": "Карта"}
+
 STATUSES = {
     "new": "Янги",
     "accepted": "Қабул қилинди",
@@ -38,6 +40,9 @@ def conn() -> sqlite3.Connection:
             CREATE INDEX IF NOT EXISTS ix_orders_day ON orders(day);
             """
         )
+        cols = {r[1] for r in _conn.execute("PRAGMA table_info(orders)")}
+        if "payment" not in cols:
+            _conn.execute("ALTER TABLE orders ADD COLUMN payment TEXT DEFAULT 'cash'")
         _conn.commit()
     return _conn
 
@@ -48,6 +53,8 @@ def _row(r: sqlite3.Row | None) -> dict | None:
     d = dict(r)
     d["items"] = json.loads(d.get("items") or "[]")
     d["status_label"] = STATUSES.get(d["status"], d["status"])
+    d["payment"] = d.get("payment") or "cash"
+    d["payment_label"] = PAYMENTS.get(d["payment"], d["payment"])
     return d
 
 
@@ -57,12 +64,12 @@ def create_order(now: datetime, **o) -> dict:
     no = c.execute("SELECT COUNT(*) FROM orders WHERE day=?", (day,)).fetchone()[0] + 1
     cur = c.execute(
         """INSERT INTO orders(no, day, created_at, updated_at, user_id, username, name, phone, address,
-               comment, lat, lon, items, qty, subtotal, fee, total)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               comment, lat, lon, items, qty, subtotal, fee, total, payment)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (no, day, now.isoformat(timespec="seconds"), now.isoformat(timespec="seconds"),
          o["user_id"], o.get("username"), o["name"], o["phone"], o["address"], o.get("comment", ""),
          o.get("lat"), o.get("lon"), json.dumps(o["items"], ensure_ascii=False),
-         o["qty"], o["subtotal"], o["fee"], o["total"]),
+         o["qty"], o["subtotal"], o["fee"], o["total"], o.get("payment") or "cash"),
     )
     c.commit()
     return get_order(cur.lastrowid)
@@ -97,12 +104,14 @@ def list_orders(day_from: str, day_to: str) -> list[dict]:
 
 def _period(day_from: str, day_to: str) -> dict:
     r = conn().execute(
-        """SELECT COUNT(*) n, COALESCE(SUM(total),0) s, COALESCE(SUM(qty),0) q
+        """SELECT COUNT(*) n, COALESCE(SUM(total),0) s, COALESCE(SUM(qty),0) q,
+                  COALESCE(SUM(CASE WHEN payment='card' THEN total END),0) card
            FROM orders WHERE day BETWEEN ? AND ? AND status!='cancelled'""",
         (day_from, day_to),
     ).fetchone()
     n, s = r["n"], r["s"]
-    return {"orders": n, "revenue": s, "portions": r["q"], "avg": round(s / n) if n else 0}
+    return {"orders": n, "revenue": s, "portions": r["q"], "avg": round(s / n) if n else 0,
+            "card": r["card"], "cash": s - r["card"]}
 
 
 def summary(today: date) -> dict:

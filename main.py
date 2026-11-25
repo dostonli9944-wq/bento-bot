@@ -59,7 +59,9 @@ MENU_MARK = "#BENTO_MENU"
 WEBHOOK_PATH = "/tg/" + hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:24]
 WEBHOOK_SECRET = hashlib.sha256(("secret:" + BOT_TOKEN).encode()).hexdigest()[:32]
 
-BOT_API_URL = os.environ.get("BOT_API_URL", "").rstrip("/")  # o'zimizning Bot API server (ixtiyoriy)
+BOT_API_URL = os.environ.get("BOT_API_URL", "").rstrip("/")
+CARD_NUMBER = os.environ.get("CARD_NUMBER", "").strip()   # masalan: 8600 1234 5678 9012
+CARD_OWNER = os.environ.get("CARD_OWNER", "").strip()     # masalan: A. Valiyev  # o'zimizning Bot API server (ixtiyoriy)
 _session = None
 if BOT_API_URL:
     from aiogram.client.session.aiohttp import AiohttpSession
@@ -355,6 +357,7 @@ def order_text(o: dict) -> str:
         f"📞 {html.escape(o['phone'])}\n"
         f"📍 {html.escape(o['address'])}"
         + (f"\n💬 {html.escape(o['comment'])}" if o.get("comment") else "")
+        + ("\n\n💳 <b>Тўлов: Карта орқали</b>" if o.get("payment") == "card" else "\n\n💵 <b>Тўлов: Нақд</b>")
     )
     if o["status"] != "new":
         upd = datetime.fromisoformat(o["updated_at"])
@@ -481,7 +484,8 @@ async def api_menu(_req):
         dishes.append({"slot": slot, "name": d["name"], "price": d["price"], "desc": d.get("desc", ""), "photo": photo})
     return web.json_response(
         {"dishes": dishes, "open": is_open(), "start": ORDER_START, "end": ORDER_END,
-         "fee": DELIVERY_FEE, "freeFrom": FREE_FROM},
+         "fee": DELIVERY_FEE, "freeFrom": FREE_FROM,
+         "card": {"number": CARD_NUMBER, "owner": CARD_OWNER} if CARD_NUMBER else None},
         headers={"Cache-Control": "no-store"},
     )
 
@@ -500,6 +504,16 @@ async def photo(req):
         photo_cache[fid] = buf.getvalue()
     return web.Response(body=photo_cache[fid], content_type="image/jpeg",
                         headers={"Cache-Control": "public, max-age=86400"})
+
+
+def pay_note(payment: str, total: int) -> str:
+    if payment != "card":
+        return "💵 Тўлов: нақд — курьерга берасиз.\n"
+    if CARD_NUMBER:
+        owner = f" ({html.escape(CARD_OWNER)})" if CARD_OWNER else ""
+        return (f"💳 Тўлов: карта орқали.\n<b>{som(total)}</b> ни <code>{html.escape(CARD_NUMBER)}</code>{owner} "
+                "картасига ўтказинг ва чек скриншотини операторга юборинг.\n")
+    return "💳 Тўлов: карта орқали — оператор карта рақамини юборади.\n"
 
 
 async def api_order(req):
@@ -533,6 +547,7 @@ async def api_order(req):
     phone = str(body.get("phone", "")).strip()[:25]
     address = str(body.get("address", "")).strip()[:300]
     comment = str(body.get("comment", "")).strip()[:300]
+    payment = "card" if body.get("payment") == "card" else "cash"
     if not name or not address or len("".join(c for c in phone if c.isdigit())) < 9:
         return json_err("Исм, телефон ва манзилни тўлиқ киритинг.")
 
@@ -547,7 +562,7 @@ async def api_order(req):
     o = db.create_order(
         datetime.now(TZ), user_id=uid, username=user.get("username"), name=name, phone=phone,
         address=address, comment=comment, lat=lat, lon=lon, items=items,
-        qty=qty_total, subtotal=subtotal, fee=fee, total=total,
+        qty=qty_total, subtotal=subtotal, fee=fee, total=total, payment=payment,
     )
     no = o["no"]
 
@@ -567,12 +582,12 @@ async def api_order(req):
             uid,
             f"Раҳмат! Буюртма №{no} қабул қилинди ✅\n\n" + "\n".join(lines)
             + f"\nЕтказиш: {'бепул' if fee == 0 else som(fee)}\n<b>Жами: {som(total)}</b>\n\n"
-            "Тез орада оператор боғланади.",
+            + pay_note(payment, total) + "Тез орада оператор боғланади.",
         )
     except Exception as e:  # noqa: BLE001
         log.warning("Mijozga tasdiq yuborilmadi: %s", e)
 
-    return web.json_response({"ok": True, "no": no, "total": total})
+    return web.json_response({"ok": True, "no": no, "total": total, "payment": payment})
 
 
 async def health(_req):

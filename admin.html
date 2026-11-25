@@ -46,6 +46,8 @@ tr.fresh{animation:fl 3s}
 a.tel{color:var(--ink);white-space:nowrap}
 .empty{padding:40px;text-align:center;color:var(--mute)}
 select.st{font-weight:600}
+.pm{display:inline-block;margin-top:4px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:#eef7ee;color:#166534}
+.pm.card{background:#eef2ff;color:#3730a3}
 @media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}.v{font-size:20px}header h1{font-size:15px}.row2{grid-template-columns:1fr}
  table,thead,tbody,tr,td{display:block}thead{display:none}tr{border-bottom:1px solid var(--line);padding:8px 0}
  td{border:0;padding:4px 12px}td.num{text-align:left}main{padding:12px}}
@@ -59,6 +61,12 @@ select.st{font-weight:600}
     <div class="card"><div class="k">Kecha</div><div class="v" id="y-o">–</div><div class="s" id="y-r">–</div></div>
     <div class="card"><div class="k">7 kun</div><div class="v" id="w-o">–</div><div class="s" id="w-r">–</div></div>
     <div class="card"><div class="k">O'rtacha chek (7 kun)</div><div class="v" id="avg">–</div><div class="s" id="m-r">–</div></div>
+  </div>
+  <div class="grid" style="margin-top:12px">
+    <div class="card"><div class="k">💵 Naqd — bugun</div><div class="v" id="t-cash">–</div><div class="s" id="w-cash">–</div></div>
+    <div class="card"><div class="k">💳 Karta — bugun</div><div class="v" id="t-card">–</div><div class="s" id="w-card">–</div></div>
+    <div class="card"><div class="k">💵 Naqd — kecha</div><div class="v" id="y-cash">–</div><div class="s">&nbsp;</div></div>
+    <div class="card"><div class="k">💳 Karta — kecha</div><div class="v" id="y-card">–</div><div class="s">&nbsp;</div></div>
   </div>
   <div class="row2">
     <div class="card"><h2>Oxirgi 7 kun — tushum</h2><div class="bars" id="bars"></div></div>
@@ -96,6 +104,9 @@ async function loadSummary(){
   $("t-o").textContent=s.today.orders+" ta";  $("t-r").textContent=som(s.today.revenue)+" · "+s.today.portions+" porsiya";
   $("y-o").textContent=s.yesterday.orders+" ta"; $("y-r").textContent=som(s.yesterday.revenue);
   $("w-o").textContent=s.week.orders+" ta";  $("w-r").textContent=som(s.week.revenue);
+  $("t-cash").textContent=som(s.today.cash); $("t-card").textContent=som(s.today.card);
+  $("y-cash").textContent=som(s.yesterday.cash); $("y-card").textContent=som(s.yesterday.card);
+  $("w-cash").textContent="7 kun: "+som(s.week.cash); $("w-card").textContent="7 kun: "+som(s.week.card);
   $("avg").textContent=som(s.week.avg);     $("m-r").textContent="30 kun: "+som(s.month.revenue);
   const mx=Math.max(1,...s.daily.map(d=>d.revenue));
   $("bars").innerHTML=s.daily.map(d=>`<div class="bar" title="${d.orders} ta buyurtma"><b>${d.revenue?Math.round(d.revenue/1000)+"k":""}</b>
@@ -127,7 +138,7 @@ function render(fresh=new Set()){
       <td>${esc(o.name)}${o.username?` <span class="s">@${esc(o.username)}</span>`:""}<br><a class="tel" href="tel:${esc(o.phone)}">${esc(o.phone)}</a></td>
       <td>${esc(o.address)}${map}${o.comment?`<div class="s">💬 ${esc(o.comment)}</div>`:""}</td>
       <td class="items">${o.items.map(i=>`${esc(i.name)} × ${i.qty}`).join("<br>")}</td>
-      <td class="num"><b>${som(o.total)}</b><div class="s">${o.fee?"yetkazish "+som(o.fee):"bepul yetkazish"}</div></td>
+      <td class="num"><b>${som(o.total)}</b><div class="s">${o.fee?"yetkazish "+som(o.fee):"bepul yetkazish"}</div><div class="pm ${o.payment}">${o.payment==="card"?"💳 Karta":"💵 Naqd"}</div></td>
       <td><span class="dot" style="background:var(--${o.status})"></span><select class="st" data-id="${o.id}">${opts}</select>
         ${o.status_by?`<div class="s">${esc(o.status_by)}</div>`:""}</td></tr>`}).join("");
 }
